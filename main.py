@@ -1,10 +1,9 @@
 import os
 import logging
-import requests
+import openai
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from langchain_ollama import OllamaLLM
 
 # Load environment variables
 load_dotenv()
@@ -15,30 +14,15 @@ logging.basicConfig(level=logging.INFO)
 # Initialize FastAPI app
 app = FastAPI()
 
-# Ollama Server URL
-OLLAMA_HOST = "http://127.0.0.1:11434"
+# Get OpenAI API Key
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Check if Ollama is running
-def is_ollama_running():
-    try:
-        response = requests.get(f"{OLLAMA_HOST}/api/tags", timeout=3)
-        if response.status_code == 200:
-            return True
-        return False
-    except requests.exceptions.RequestException:
-        return False
+if not OPENAI_API_KEY:
+    logging.error("❌ OPENAI_API_KEY is missing! Set it in your .env file.")
+    raise RuntimeError("Missing OpenAI API Key!")
 
-# Initialize Ollama model only if server is running
-if is_ollama_running():
-    try:
-        llm = OllamaLLM(model="dolphin3:latest")
-        logging.info("✅ Ollama model loaded successfully")
-    except Exception as e:
-        logging.error(f"❌ Failed to load Ollama model: {e}")
-        llm = None
-else:
-    logging.error("❌ Ollama is not running! Start Ollama with 'ollama serve'.")
-    llm = None
+# Configure OpenAI
+openai.api_key = OPENAI_API_KEY
 
 # System Prompt
 SYSTEM_PROMPT = """You are an AI assistant named EchoBot. Your purpose is to assist users by answering questions, providing helpful information, and engaging in conversations. Keep responses professional and useful."""
@@ -50,27 +34,33 @@ class ChatRequest(BaseModel):
 # Root endpoint
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to EchoBot Backend!"}
+    return {"message": "Welcome to EchoBot Backend (OpenAI)!"}
 
 # Chat endpoint
 @app.post("/chat")
 async def chat(request: ChatRequest):
-    if llm is None:
-        logging.error("❌ Ollama model is not initialized")
-        raise HTTPException(status_code=503, detail="Ollama service unavailable")
-
     try:
         logging.info(f"📩 Received message: {request.message}")
 
-        user_input = request.message
-        formatted_prompt = f"{SYSTEM_PROMPT}\nUser: {user_input}\nEchoBot:"
+        # OpenAI API Call
+        response = openai.ChatCompletion.create(
+            model="gpt-4",  # Change to "gpt-3.5-turbo" if needed
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": request.message},
+            ],
+            temperature=0.7,
+        )
 
-        # Generate response
-        response = llm.invoke(formatted_prompt)
+        bot_response = response["choices"][0]["message"]["content"]
+        logging.info(f"✅ Generated response: {bot_response}")
 
-        logging.info(f"✅ Generated response: {response}")
-        return {"response": response}
+        return {"response": bot_response}
+
+    except openai.error.OpenAIError as e:
+        logging.error(f"❌ OpenAI API Error: {e}")
+        raise HTTPException(status_code=500, detail="OpenAI API Error")
 
     except Exception as e:
-        logging.error(f"❌ Error in chat endpoint: {e}")
+        logging.error(f"❌ Internal Server Error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
