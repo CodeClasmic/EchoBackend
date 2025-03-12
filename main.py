@@ -43,7 +43,7 @@ async def chat(request: ChatRequest):
         client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
         response = client.chat.completions.create(
-            model="gpt-4",  # Change to "gpt-3.5-turbo" if needed
+            model="gpt-3.5-turbo",  # Change to "gpt-3.5-turbo" if needed
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": request.message},
